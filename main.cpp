@@ -35,7 +35,7 @@ std::vector<std::vector<double>> CreateRandomMatrix(size_t count_rows, size_t co
     std::vector<std::vector<double>> result(count_rows);
     for (auto& i: result) {
         i.resize(count_columns);
-
+    }
 
     for (int i = 0; i < count_rows; ++i) {
         for (int j = 0; j < count_columns; ++j) {

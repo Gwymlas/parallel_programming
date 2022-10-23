@@ -96,9 +96,9 @@ void PrintMatrix(const std::vector<std::vector<double>>& matrix) {
 int main() {
     srand(time(0));
 
-    size_t n = 1000;
-    size_t m = 1000;
-    size_t k = 1000;
+    size_t n = 1500;
+    size_t m = 1500;
+    size_t k = 1500;
 
 
     auto first = CreateRandomMatrix(n, m);
@@ -115,9 +115,11 @@ int main() {
     clock_t start = clock();
 
     auto result = MatrixMultiplication(first, second);
+    clock_t end = clock();
+
     CreateFile(result, "/Users/gwymlas/Desktop/result.txt");
 
-    clock_t end = clock();
+
 
     //PrintMatrix(result);
 

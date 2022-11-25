@@ -2,10 +2,11 @@
 #include <vector>
 #include <fstream>
 #include <ctime>
+#include <omp.h>
 
 
 std::vector<std::vector<double>> MatrixMultiplication(const std::vector<std::vector<double>>& first_matrix,
-                                                      const std::vector<std::vector<double>>& second_matrix){
+                                                      const std::vector<std::vector<double>>& second_matrix) {
     // (n,m)*(m,k) = (n,k)
     // count rows = n
     // count columns = k
@@ -20,6 +21,9 @@ std::vector<std::vector<double>> MatrixMultiplication(const std::vector<std::vec
 
     size_t m = second_matrix.size();
 
+    omp_set_num_threads(16);
+
+#pragma omp parallel for shared(first_matrix, second_matrix, result, count_rows, count_columns, m) default(none)
     for (int i = 0; i < count_rows; ++i) {
         for (int j = 0; j < count_columns; ++j) {
             for (int k = 0; k < m; ++k) {
@@ -27,8 +31,8 @@ std::vector<std::vector<double>> MatrixMultiplication(const std::vector<std::vec
             }
         }
     }
-
     return result;
+
 }
 
 
@@ -55,7 +59,7 @@ void CreateFile(const std::vector<std::vector<double>>& matrix, const char* path
         std::cout << "OK" << std::endl;
         for (int i = 0; i < matrix.size(); ++i) {
             for (int j = 0; j < matrix[i].size(); ++j) {
-                out << std::setw(10) << matrix[i][j];
+                out << "\t" << matrix[i][j]; //setw(10)
             }
             out << std::endl;
         }
@@ -96,34 +100,28 @@ void PrintMatrix(const std::vector<std::vector<double>>& matrix) {
 int main() {
     srand(time(0));
 
-    size_t n = 1500;
-    size_t m = 1500;
-    size_t k = 1500;
-
+    size_t N = 2000;
+    size_t n = N;
+    size_t m = N;
+    size_t k = N;
 
     auto first = CreateRandomMatrix(n, m);
     auto second = CreateRandomMatrix(m, k);
 
-    CreateFile(first, "/Users/gwymlas/Desktop/1.txt");
-    CreateFile(second, "/Users/gwymlas/Desktop/2.txt");
-
-    //std::vector<std::vector<double>> first, second;
-
-    //ReadFile(first, n, m, "/Users/gwymlas/Desktop/1.txt");
-    //ReadFile(second, m, k, "/Users/gwymlas/Desktop/2.txt");
+//    CreateFile(first, "/Users/gwymlas/Desktop/1.txt");
+//    CreateFile(second, "/Users/gwymlas/Desktop/2.txt");
 
     clock_t start = clock();
-
+    double t1 = omp_get_wtime();
     auto result = MatrixMultiplication(first, second);
+    double t2 = omp_get_wtime();
     clock_t end = clock();
 
-    CreateFile(result, "/Users/gwymlas/Desktop/result.txt");
+//    CreateFile(result, "/Users/gwymlas/Desktop/result.txt");
 
+//    std::cout << "Time of multiplication: " << (double) (end-start) / CLOCKS_PER_SEC << std::endl;
+    std::cout << "Time of multiplication: " << t2 - t1 << std::endl;
 
-
-    //PrintMatrix(result);
-
-    std::cout << "Time of multiplication: " << (double) (end-start) / CLOCKS_PER_SEC << std::endl;
     std::cout << "First matrix: ("  << n << ", " << m << ")" << std::endl;
     std::cout << "Second matrix: (" << m << ", " << k << ")"<< std::endl;
     std::cout << "Result matrix: (" << n << ", " << k << ")" << std::endl;

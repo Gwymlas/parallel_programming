@@ -1,7 +1,4 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
-#include "cublas_v2.h"
+#include <cublas_v2.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,9 +16,15 @@ void printmat(float* m, int n)
 int main(int argc, char* argv[])
 {
     const int BLOCK_SIZE = 5;
-  
-    int n = 2000;
-
+    /* if (argc != 2)
+     {
+         printf("Usage: %s <n>\n", argv[1]);
+         printf("Where n must be > %d and a multiplier of %d\n",
+             BLOCK_SIZE, BLOCK_SIZE);
+         return 0;
+     }
+     */
+    int n = 800;
     if ((n < BLOCK_SIZE) || (n % BLOCK_SIZE))
     {
         fprintf(stderr, "Invalid n: %d\n", n);
@@ -64,7 +67,7 @@ int main(int argc, char* argv[])
             cudaGetErrorString(cuerr));
         return 1;
     }
-    float * cdev = NULL;
+    float* cdev = NULL;
     cuerr = cudaMalloc((void**)&cdev, n2b);
     if (cuerr != cudaSuccess)
     {
@@ -117,9 +120,9 @@ int main(int argc, char* argv[])
 
     // Set kernel launch configuration
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 blocks( n / threads.x, n / threads.y);
+    dim3 blocks(n / threads.x, n / threads.y);
 
-    kernel<<<blocks, threads>>>(adev, bdev, n, cdev);
+    kernel << <blocks, threads >> > (adev, bdev, n, cdev);
     cuerr = cudaGetLastError();
     if (cuerr != cudaSuccess)
     {
@@ -152,9 +155,68 @@ int main(int argc, char* argv[])
     }
 
     cuerr = cudaEventElapsedTime(&gpuTime, start, stop);
-    printf("time spent: %.2f millseconds\n", gpuTime);
-    printf("BLOCK_SIZE = %d\n", BLOCK_SIZE);
+    printf("time spent executing %s: %.2f millseconds\n", "kernel", gpuTime);
 
+    // Measure time of CUBLAS gemm execution
+    cuerr = cudaEventRecord(start, 0);
+    if (cuerr != cudaSuccess)
+    {
+        fprintf(stderr, "Cannot record CUDA event: %s\n",
+            cudaGetErrorString(cuerr));
+        return 1;
+    }
+
+    cublasHandle_t handle;
+    cublasStatus_t cberr = cublasCreate_v2(&handle);
+    if (cberr != CUBLAS_STATUS_SUCCESS)
+    {
+        fprintf(stderr, "Cannot create cublas handle: %d\n", cberr);
+        return 1;
+    }
+
+    float alpha = 1.0, beta = 0.0;
+    cberr = cublasSgemm_v2(
+        handle, CUBLAS_OP_T, CUBLAS_OP_T, n, n, n,
+        &alpha, adev, n, bdev, n, &beta, cdev, n);
+    if (cberr != CUBLAS_STATUS_SUCCESS)
+    {
+        fprintf(stderr, "Error launching cublasSgemm_v2: %d\n", cberr);
+        return 1;
+    }
+
+    cuerr = cudaDeviceSynchronize();
+    if (cuerr != cudaSuccess)
+    {
+        fprintf(stderr, "Cannot synchronize kernel: %s\n",
+            cudaGetErrorString(cuerr));
+        return 1;
+    }
+
+    cberr = cublasDestroy_v2(handle);
+    if (cberr != CUBLAS_STATUS_SUCCESS)
+    {
+        fprintf(stderr, "Cannot destroy cublas handle: %d\n", cberr);
+        return 1;
+    }
+
+    cuerr = cudaEventRecord(stop, 0);
+    if (cuerr != cudaSuccess)
+    {
+        fprintf(stderr, "Cannot copy c array from device to host: %s\n",
+            cudaGetErrorString(cuerr));
+        return 1;
+    }
+    cuerr = cudaMemcpy(c2, cdev, n2b, cudaMemcpyDeviceToHost);
+    if (cuerr != cudaSuccess)
+    {
+        fprintf(stderr, "Cannot copy c array from device to host: %s\n",
+            cudaGetErrorString(cuerr));
+        return 1;
+    }
+
+    cuerr = cudaEventElapsedTime(&gpuTime, start, stop);
+    printf("time spent executing %s: %.2f millseconds\n",
+        "cublasSgemm_v2", gpuTime);
 
     if (n <= 8)
     {
@@ -164,6 +226,27 @@ int main(int argc, char* argv[])
         printf("C2 = \n"); printmat(c2, n);
     }
 
+    // Compare results
+    int imaxdiff = 0, jmaxdiff = 0;
+    double maxdiff = 0;
+    for (int j = 0; j < n; j++)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            double diff = (double)c1[i + j * n] / c2[j + i * n];
+            if (diff != diff) diff = 0.0; else diff = 1.0 - diff;
+            if (diff > maxdiff)
+            {
+                maxdiff = diff;
+                imaxdiff = i;
+                jmaxdiff = j;
+            }
+        }
+    }
+    printf("max diff = %.2f% @ [%d, %d]: %f != %f\n",
+        maxdiff * 100, imaxdiff, jmaxdiff,
+        c1[imaxdiff + jmaxdiff * n],
+        c2[jmaxdiff + imaxdiff * n]);
 
     // Release resources
     cudaEventDestroy(start);
